@@ -129,6 +129,7 @@ int IP_send(mic_tcp_pdu pk, mic_tcp_ip_addr addr)
 
 int IP_recv(mic_tcp_pdu* pk, mic_tcp_ip_addr* local_addr, mic_tcp_ip_addr* remote_addr, unsigned long timeout)
 {
+
     int result = -1;
 
     struct timeval tv;
@@ -139,6 +140,8 @@ int IP_recv(mic_tcp_pdu* pk, mic_tcp_ip_addr* local_addr, mic_tcp_ip_addr* remot
     if(initialized == -1) {
         return -1;
     }
+
+
 
     /* Compute the number of entire seconds */
     tv.tv_sec = timeout / 1000;
@@ -230,7 +233,7 @@ int app_buffer_get(mic_tcp_payload app_buff)
 
     /* If the buffer is empty, we wait for insertion */
     while(app_buffer_head.tqh_first == NULL) {
-          pthread_cond_wait(&buffer_empty_cond, &lock);
+        pthread_cond_wait(&buffer_empty_cond, &lock);
     }
 
     /* When we execute the code below, the following conditions are true:
@@ -256,7 +259,6 @@ int app_buffer_get(mic_tcp_payload app_buff)
     /* Clean up memory */
     free(entry->bf.data);
     free(entry);
-
     return result;
 }
 
@@ -303,8 +305,7 @@ void* listening(void* arg)
     remote.addr_size=100;
 
 
-    while(1)
-    {
+    while(1) {
         remote.addr_size=100;
         pdu_tmp.payload.size = payload_size;
         recv_size = IP_recv(&pdu_tmp, &local, &remote, 0);
