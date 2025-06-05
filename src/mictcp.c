@@ -5,6 +5,7 @@ struct mic_tcp_sock sockets[10];
 int num_sockets = 0;
 
 int ports[10];
+int sequences[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 /*
  * Permet de créer un socket entre l’application et MIC-TCP
@@ -41,6 +42,7 @@ int mic_tcp_socket(start_mode sm) {
 
    num_sockets++;
    return sockets[num_sockets-1].fd;
+
 }
 /*
  * Permet d’attribuer une adresse à un socket.
@@ -118,9 +120,11 @@ int mic_tcp_send (int mic_sock, char* mesg, int mesg_size) {
    struct mic_tcp_pdu pdu;
     
    pdu.header.source_port = ports[mic_sock];
-
    pdu.header.dest_port = ports[mic_sock];
-   pdu.header.seq_num = 0;
+
+   printf("[MIC-TCP] PSE: %d\n", sequences[mic_sock]);
+   
+   pdu.header.seq_num = sequences[mic_sock];
    pdu.header.ack_num = 0;
    pdu.header.syn = 0;
    pdu.header.ack = 0;
@@ -131,7 +135,29 @@ int mic_tcp_send (int mic_sock, char* mesg, int mesg_size) {
 
    int effective_send=IP_send(pdu, sockets[mic_sock].remote_addr.ip_addr);
 
+   struct mic_tcp_pdu ack;
+   struct mic_tcp_ip_addr *local_addr = &sockets[mic_sock].local_addr.ip_addr;
+   struct mic_tcp_ip_addr *remote_addr = &sockets[mic_sock].remote_addr.ip_addr;
+   ack.header.ack_num = -1;
+   ack.payload.data = " ";
+   ack.payload.size = 1;
+   int ack_rcv;
+
+   while (ack.header.ack_num != sequences[mic_sock] && ack_rcv > -1) {
+      ack_rcv = IP_recv(&ack, local_addr, remote_addr, 0);
+   }
+
+   if (ack.header.ack_num == sequences[mic_sock]) {
+      printf("[MIC-TCP] ACK %d reçu\n", sequences[mic_sock]);
+   } else {
+      printf("[MIC-TCP] Erreur dans la reception du ACK\n");
+      return -1;
+   }
+   
+   sequences[mic_sock]++;
+
    return effective_send;
+
 }
 
 /*
@@ -162,6 +188,7 @@ int mic_tcp_close (int socket)
     printf("[MIC-TCP] Appel de la fonction :  "); printf(__FUNCTION__); printf("\n");
     sockets[socket].state = CLOSED;
     return -1;
+
 }
 
 /*
@@ -174,6 +201,27 @@ void process_received_PDU(mic_tcp_pdu pdu, mic_tcp_ip_addr local_addr, mic_tcp_i
 
    printf("[MIC-TCP] Appel de la fonction: "); printf(__FUNCTION__); printf("\n");
    mic_tcp_payload pl = pdu.payload;
-   app_buffer_put(pl);
+   mic_tcp_header header = pdu.header;
+
+   printf("[MIC-TCP] PSA : %d\n", sequences[num_sockets]);
+
+   if (header.seq_num == sequences[num_sockets]) {
+      
+      mic_tcp_pdu ack;
+      ack.header.ack = 1;
+      ack.header.syn = 0;
+      ack.header.fin = 0;
+      ack.header.ack_num = header.seq_num;
+      ack.header.dest_port = pdu.header.source_port;
+      ack.header.source_port = pdu.header.dest_port;
+      
+      IP_send(ack, remote_addr);
+
+      app_buffer_put(pl);
+
+      sequences[num_sockets]++;
+      printf("[MIC-TCP] PSA updated: %d\n", sequences[num_sockets]);
+
+   }
 
 }
