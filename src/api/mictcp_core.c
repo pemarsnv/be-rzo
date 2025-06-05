@@ -93,7 +93,10 @@ int initialize_components(start_mode mode)
 }
 
 
-
+/*Fonction permettant d’envoyer un PDU MIC-TCP sur le réseau via 
+le service fourni par IP. Retourne le nombre d’octets envoyés ou
+- 1 si erreur
+*/
 int IP_send(mic_tcp_pdu pk, mic_tcp_ip_addr addr)
 {
 
@@ -126,7 +129,10 @@ int IP_send(mic_tcp_pdu pk, mic_tcp_ip_addr addr)
 
     return result;
 }
-
+/*Fonction permettant de se mettre en attente d’un PDU MIC-TCP en provenance du réseau via le service fourni par IP pendant un certain délai.
+ Retourne la taille du PDU reçu ou bien -1 si aucun PDU n’a été reçu après expiration du délai (exprimé en millisecondes).
+NB : ce délai pourra être utilisé en tant que timer de retransmission
+*/
 int IP_recv(mic_tcp_pdu* pk, mic_tcp_ip_addr* local_addr, mic_tcp_ip_addr* remote_addr, unsigned long timeout)
 {
 

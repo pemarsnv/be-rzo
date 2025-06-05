@@ -97,14 +97,41 @@ int mic_tcp_connect(int socket, mic_tcp_sock_addr addr) {
 
       return -1;
    }
-
-   sockets[socket].local_addr.port = addr.port;
+   /// je pense qu'on a fais une erreur la, je ne comprends pas pk on compaire le port de ladresse local 
+   // avec le port de l'adresse
+   /*sockets[socket].local_addr.port = addr.port;
    ports[socket] = addr.port;
    if (sockets[socket].local_addr.port != addr.port) {
       printf("[MIC-TCP] Erreur dans : ");  printf(__FUNCTION__); printf("\n");
       printf("Initialisation de l'adresse locale du socket (port)\n");
       return -1;
    }
+      */
+   // creation d'un pdu syn 
+   mic_tcp_pdu pdu_syn;
+   pdu_syn.header.syn=1;
+   pdu_syn.header.ack=0;
+   pdu_syn.header.seq_num = 0;//euh
+   
+   IP_send(pdu_syn,addr.ip_addr);
+
+   // on se base sur la machine a état
+   // etape 1 on recoit un syn 
+   if(IP_recv(&pdu_syn, &sockets[socket].local_addr.ip_addr, &addr.ip_addr,0)==-1){
+      printf(" erreur dans la reception du syn chez mic_tcp_connect\n");
+      return -1;
+   }
+   
+   // etape 2 on envoit un syn-ack et on start le timer 
+   
+
+   // etape 3 on attent un ack
+      // cas 1: on recoit un ack 
+         
+      //cas 2 : on recoit un syn : retour étape 2 
+
+      //cas 3 : experation du timer : retour etape 2
+
 
     return 0;
 }
