@@ -7,6 +7,11 @@ int num_sockets = 0;
 int ports[10];
 int sequences[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
+int nb_envois = 0;
+int nb_pertes = 0;
+
+int test_ack = 0;
+
 /*
  * Permet de créer un socket entre l’application et MIC-TCP
  * Retourne le descripteur du socket ou bien -1 en cas d'erreur
@@ -20,7 +25,7 @@ int mic_tcp_socket(start_mode sm) {
    if (result < 0) {
       return result;
    }
-   set_loss_rate(0);
+   set_loss_rate(10);
 
    sockets[num_sockets].fd = num_sockets;
    sockets[num_sockets].state = IDLE;
@@ -54,11 +59,16 @@ int mic_tcp_bind(int socket, mic_tcp_sock_addr addr) {
    printf("socket: %d\n",socket);
 
    //initialisation de l'adresse distante 
+   // si l'adresse est NULL, c'est qu'on prend toutes les adresses 
+   // de la machine "a travers" le port qu'on a selectionné 
+
    sockets[socket].remote_addr = addr;
-   if (strcmp(sockets[socket].remote_addr.ip_addr.addr, addr.ip_addr.addr) != 0) {
-      printf("[MIC-TCP] Erreur dans : ");  printf(__FUNCTION__); printf("\n");
-      printf("Initialisation de l'adresse distante du socket\n");
-      return -1;
+   if(addr.ip_addr.addr != NULL){
+       if (strcmp(sockets[socket].remote_addr.ip_addr.addr, addr.ip_addr.addr) != 0) {
+         printf("[MIC-TCP] Erreur dans : ");  printf(__FUNCTION__); printf("\n");
+         printf("Initialisation de l'adresse distante du socket\n");
+         return -1;
+      }
    }
 
    sockets[socket].local_addr.port = addr.port;
@@ -87,8 +97,9 @@ int mic_tcp_accept(int socket, mic_tcp_sock_addr* addr)
  * Retourne 0 si la connexion est établie, et -1 en cas d’échec
  */
 int mic_tcp_connect(int socket, mic_tcp_sock_addr addr) {
-   
    printf("[MIC-TCP] Appel de la fonction: ");  printf(__FUNCTION__); printf("\n");
+
+  
 
    sockets[socket].remote_addr = addr;
    if (strcmp(sockets[socket].remote_addr.ip_addr.addr, addr.ip_addr.addr) != 0) {
@@ -97,41 +108,45 @@ int mic_tcp_connect(int socket, mic_tcp_sock_addr addr) {
 
       return -1;
    }
-   /// je pense qu'on a fais une erreur la, je ne comprends pas pk on compaire le port de ladresse local 
-   // avec le port de l'adresse
-   /*sockets[socket].local_addr.port = addr.port;
-   ports[socket] = addr.port;
-   if (sockets[socket].local_addr.port != addr.port) {
-      printf("[MIC-TCP] Erreur dans : ");  printf(__FUNCTION__); printf("\n");
-      printf("Initialisation de l'adresse locale du socket (port)\n");
-      return -1;
-   }
-      */
+
+   /*
+
    // creation d'un pdu syn 
    mic_tcp_pdu pdu_syn;
    pdu_syn.header.syn=1;
    pdu_syn.header.ack=0;
-   pdu_syn.header.seq_num = 0;//euh
+   pdu_syn.header.seq_num = sequences[num_sockets];
    
    IP_send(pdu_syn,addr.ip_addr);
 
-   // on se base sur la machine a état
-   // etape 1 on recoit un syn 
-   if(IP_recv(&pdu_syn, &sockets[socket].local_addr.ip_addr, &addr.ip_addr,0)==-1){
-      printf(" erreur dans la reception du syn chez mic_tcp_connect\n");
-      return -1;
+   //reception du syn ack
+   mic_tcp_pdu pdu_syn_ack;
+   int syn_ack_recv = 0;
+
+   while (syn_ack_recv > -1 && pdu_syn_ack.header.ack != 1 && pdu_syn_ack.header.syn != 1 && pdu_syn_ack.header.seq_num == sequences[num_sockets]) {
+      syn_ack_recv = IP_recv(&pdu_syn_ack, &sockets[socket].local_addr.ip_addr, &addr.ip_addr,0);
+   }
+
+   sequences[num_sockets]++;
+
+   if (syn_ack_recv == - 1) {
+      printf("[MIC-TCP] Erreur dans : ");  printf(__FUNCTION__); printf("\n");
+      printf("Réception du PDU SYN ACK\n"); 
+   }
+
+   if (pdu_syn_ack.header.ack == 1 && pdu_syn_ack.header.syn == 1 && pdu_syn_ack.header.ack_num == sequences[num_sockets]) {
+      printf("[MIC-TCP] Réception du PDU SYN ACK\n"); 
    }
    
    // etape 2 on envoit un syn-ack et on start le timer 
    
-
-   // etape 3 on attent un ack
-      // cas 1: on recoit un ack 
-         
-      //cas 2 : on recoit un syn : retour étape 2 
-
-      //cas 3 : experation du timer : retour etape 2
-
+   mic_tcp_pdu pdu_ack;
+   pdu_syn.header.syn=0;
+   pdu_syn.header.ack=1;
+   pdu_syn.header.seq_num = sequences[num_sockets];
+   
+   IP_send(pdu_ack,addr.ip_addr);
+*/
 
     return 0;
 }
@@ -159,8 +174,13 @@ int mic_tcp_send (int mic_sock, char* mesg, int mesg_size) {
 
    pdu.payload.data = mesg;
    pdu.payload.size = mesg_size;
+   printf("%d\n",mesg_size);
 
+   
    int effective_send=IP_send(pdu, sockets[mic_sock].remote_addr.ip_addr);
+   nb_envois++;
+   
+   printf("pertes: %d / %d\n", nb_pertes, nb_envois);
 
    struct mic_tcp_pdu ack;
    struct mic_tcp_ip_addr *local_addr = &sockets[mic_sock].local_addr.ip_addr;
@@ -170,16 +190,20 @@ int mic_tcp_send (int mic_sock, char* mesg, int mesg_size) {
    ack.payload.size = 1;
    int ack_rcv;
 
-   while (ack.header.ack_num != sequences[mic_sock] && ack_rcv > -1) {
-      ack_rcv = IP_recv(&ack, local_addr, remote_addr, 0);
+   // tant qu'on ne recoit pas le ack avec le bon numero de seq
+   while (ack.header.ack_num != sequences[mic_sock]) {
+      printf("pertes: %d / %d\n", nb_pertes, nb_envois);
+      ack_rcv = IP_recv(&ack, local_addr, remote_addr, 1000);
+      printf("%d\n",ack_rcv);
+      //si expiration du timer, on renvoie notre pdu.
+      if (ack_rcv == - 1) {
+            IP_send(pdu, sockets[mic_sock].remote_addr.ip_addr);
+            nb_envois++;
+            nb_pertes++;
+      }
    }
-
-   if (ack.header.ack_num == sequences[mic_sock]) {
-      printf("[MIC-TCP] ACK %d reçu\n", sequences[mic_sock]);
-   } else {
-      printf("[MIC-TCP] Erreur dans la reception du ACK\n");
-      return -1;
-   }
+   
+   printf("[MIC-TCP] ACK %d reçu\n", sequences[mic_sock]);
    
    sequences[mic_sock]++;
 
@@ -231,6 +255,9 @@ void process_received_PDU(mic_tcp_pdu pdu, mic_tcp_ip_addr local_addr, mic_tcp_i
    mic_tcp_header header = pdu.header;
 
    printf("[MIC-TCP] PSA : %d\n", sequences[num_sockets]);
+
+   //le pb c'est par rapport à la gestion des séquences, on fait des comparaisons etre acknum et seqnum
+   //mais il faut ignorer acknum, en fait faut juste harmoniser quelle variable on compare/indente ça vient 100% de là 
 
    if (header.seq_num == sequences[num_sockets]) {
       
