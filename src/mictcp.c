@@ -88,6 +88,36 @@ int mic_tcp_bind(int socket, mic_tcp_sock_addr addr) {
 int mic_tcp_accept(int socket, mic_tcp_sock_addr* addr)
 {
     printf("[MIC-TCP] Appel de la fonction: ");  printf(__FUNCTION__); printf("\n");
+   mic_tcp_pdu pdu_syn_ack;
+   
+   mic_tcp_pdu pdu_ack ;
+   pdu_ack.header.syn = 0;
+   pdu_ack.header.ack=1;
+   pdu_ack.header.seq_num = sequences[socket];
+   
+   mic_tcp_pdu pdu_syn;
+     pdu_syn.header.syn = 1;
+   pdu_syn.header.ack=0;
+   pdu_syn.header.seq_num = sequences[socket];
+   while(1){
+       int effective_receive = ip_recv(pdu_syn, addr, 1000);
+       if(effective_receive!=-1 && pdu_syn.header.syn == 1){
+          pdu_syn_ack.header.syn = 1;
+          pdu_syn_ack.header.ack=1;
+         pdu_syn_ack.header.seq_num = sequences[socket];
+         }else{
+            //gerer la erreur de reception du syn ack?? 
+            return -1;
+         }
+        int effective_send = IP_send(pdu_syn_ack, addr->ip_addr);
+        effective_receive  = IP_recv(&pdu_ack, addr, 1000); 
+         if(effective_receive == 0 && pdu_ack.header.ack ==1){
+            sockets[socket].state=ESTABLISHED;
+         }
+         else {
+            return -1;
+         }
+   }  
 
     return 0;
 }
@@ -97,10 +127,9 @@ int mic_tcp_accept(int socket, mic_tcp_sock_addr* addr)
  * Retourne 0 si la connexion est établie, et -1 en cas d’échec
  */
 int mic_tcp_connect(int socket, mic_tcp_sock_addr addr) {
-   printf("[MIC-TCP] Appel de la fonction: ");  printf(__FUNCTION__); printf("\n");
-
   
-
+   printf("[MIC-TCP] Appel de la fonction: ");  printf(__FUNCTION__); printf("\n");
+   
    sockets[socket].remote_addr = addr;
    if (strcmp(sockets[socket].remote_addr.ip_addr.addr, addr.ip_addr.addr) != 0) {
       printf("[MIC-TCP] Erreur dans : ");  printf(__FUNCTION__); printf("\n");
@@ -109,7 +138,35 @@ int mic_tcp_connect(int socket, mic_tcp_sock_addr addr) {
       return -1;
    }
 
-    return 0;
+
+   mic_tcp_pdu pdu_syn_ack;
+   pdu_syn_ack.header.syn = 1;
+   pdu_syn_ack.header.ack=1;
+   pdu_syn_ack.header.seq_num = sequences[socket];
+   mic_tcp_pdu pdu_syn;
+   pdu_syn.header.syn = 1;
+   pdu_syn.header.ack=0;
+   pdu_syn.header.seq_num = sequences[socket];
+   IP_send(pdu_syn,addr.ip_addr);
+  
+   if(ip_recv(pdu_syn_ack, addr, 1000 ) == -1){
+      return -1;
+   }
+  
+   if(pdu_syn_ack.header.syn == 1 && pdu_syn_ack.header.ack == 1){
+      mic_tcp_pdu pdu_ack;
+      pdu_ack.header.syn=0;
+      pdu_ack.header.ack=0;
+      pdu_ack.header.ack_num=pdu_syn_ack.header.seq_num;
+      IP_send(pdu_ack,addr.ip_addr);
+      sockets[socket].state = ESTABLISHED;
+   return 0;
+
+   }
+  
+
+   
+
 }
 
 /*

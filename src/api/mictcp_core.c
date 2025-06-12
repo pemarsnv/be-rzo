@@ -97,7 +97,7 @@ int initialize_components(start_mode mode)
 le service fourni par IP. Retourne le nombre d’octets envoyés ou
 - 1 si erreur
 */
-int IP_send(mic_tcp_pdu pk, mic_tcp_ip_addr addr)
+int IP_send(mic_tcp_pdu pk, mic_tcp_ip_addr addr) 
 {
 
     int result = -1;
